@@ -25,11 +25,13 @@ button{background:#c8a465;color:#2a1d12;border:0;border-radius:8px;padding:8px 1
 @keyframes fl{from{transform:perspective(300px) rotateY(90deg) scale(1.15)}to{transform:none}}
 .tg{position:absolute;width:30%;height:30%;border-radius:50%;background:rgba(40,160,60,.8);pointer-events:none}
 .tg.cp{width:90%;height:90%;background:none;border:4px solid #1fb043}
+#ver{position:fixed;right:8px;bottom:calc(env(safe-area-inset-bottom,0px) + 4px);font-size:10px;opacity:.35;pointer-events:none}
 #cp{width:var(--w);font-size:14px;padding-top:8px;line-height:1.7}
 </style></head><body>
 <div id="top"><div id="st"></div><button id="nb">新局</button></div>
 <div id="bd"></div>
 <div id="cp"></div>
+<div id="ver">v1.2</div>
 <script>
 const V=[12,32,20,28,40,52,64],INF=1e6,D=[[1,0],[-1,0],[0,1],[0,-1]];
 const NAME=[['兵','炮','傌','俥','相','仕','帥'],['卒','包','馬','車','象','士','將']];
@@ -53,13 +55,22 @@ function ev(s,m){let x=0,n=0;
  if(H==0&&x!=0){let md=99;for(let i=0;i<32;i++){const t=b[i];if(t<0||sd(t)!=AI)continue;const r=i>>2,c=i&3;for(let j=0;j<32;j++){const u=b[j];if(u<0||sd(u)==AI)continue;const d=Math.abs(r-(j>>2))+Math.abs(c-(j&3));if(d<md)md=d}}
   if(md<99)return y+(x>0?-.6:.6)*md}
  return y}
+function qs(s,al,be,q){const st=ev(s,[]),mx=s==AI;if(q==0)return st;
+ let best=st;if(mx){if(st>al)al=st}else{if(st<be)be=st}
+ if(al>=be)return st;
+ const m=gen(s,false).filter(mv=>mv>=0&&b[mv&63]>=0&&b[mv&63]<14);
+ m.sort((x,y)=>V[rk(b[y&63])]-V[rk(b[x&63])]);
+ for(const mv of m){const f=mv>>6,t=mv&63,cap=b[t];b[t]=b[f];b[f]=-1;const v=qs(1-s,al,be,q-1);b[f]=b[t];b[t]=cap;
+  if(mx){if(v>best)best=v;if(best>al)al=best}else{if(v<best)best=v;if(best<be)be=best}
+  if(al>=be)break}
+ return best}
 function S(s,d,al,be){
  if(++nodes&1023==0&&0){}
  if((nodes&1023)==0&&performance.now()>dl)abort=true;
  if(abort)return 0;
  const m=gen(s,false);
  if(!m.length)return s==AI?-INF-d:INF+d;
- if(d==0)return ev(s,m);
+ if(d==0)return qs(s,al,be,6);
  m.sort((x,y)=>(y>=0&&b[y&63]>=0&&b[y&63]<14?V[rk(b[y&63])]:0)-(x>=0&&b[x&63]>=0&&b[x&63]<14?V[rk(b[x&63])]:0));
  const mx=s==AI;let best=mx?-1e9:1e9;
  for(const mv of m){let v;
@@ -76,7 +87,7 @@ function R(d,ord){const m=gen(AI,true);if(m.length==1)return[m[0],{}];
   else{const cap=b[t];b[t]=b[f];b[f]=-1;v=S(1-AI,d-1,-1e9,1e9);b[f]=b[t];b[t]=cap}
   if(abort)return null;sc[mv]=v;v+=Math.random()*.05;if(v>bv){bv=v;bm=mv}}
  return[bm,sc]}
-function think(){nodes=0;abort=false;dl=performance.now()+1500;let bm=null,ord={};
+function think(){nodes=0;abort=false;dl=performance.now()+2200;let bm=null,ord={};
  for(let d=1;d<=14;d++){const r=R(d,ord);if(!r)break;bm=r[0];ord=r[1]}
  return bm}
 /* ---- game ---- */
