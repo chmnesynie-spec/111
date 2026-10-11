@@ -26,12 +26,16 @@ button{background:#c8a465;color:#2a1d12;border:0;border-radius:8px;padding:8px 1
 .tg{position:absolute;width:30%;height:30%;border-radius:50%;background:rgba(40,160,60,.8);pointer-events:none}
 .tg.cp{width:90%;height:90%;background:none;border:4px solid #1fb043}
 #ver{position:fixed;right:8px;bottom:calc(env(safe-area-inset-bottom,0px) + 4px);font-size:10px;opacity:.35;pointer-events:none}
+#act,#of{width:var(--w);display:flex;gap:8px;justify-content:center;align-items:center;padding-top:8px;font-size:14px}
+#of{display:none;font-weight:700}
 #cp{width:var(--w);font-size:14px;padding-top:8px;line-height:1.7}
 </style></head><body>
 <div id="top"><div id="st"></div><button id="nb">新局</button></div>
 <div id="bd"></div>
 <div id="cp"></div>
-<div id="ver">v1.2</div>
+<div id="of"><span>AI 提出和局</span><button id="oy">接受</button><button id="on">拒絕</button></div>
+<div id="act"><button id="bdr">提和</button><button id="bsr">投降</button></div>
+<div id="ver">v1.4</div>
 <script>
 const V=[12,32,20,28,40,52,64],INF=1e6,D=[[1,0],[-1,0],[0,1],[0,-1]];
 const NAME=[['兵','炮','傌','俥','相','仕','帥'],['卒','包','馬','車','象','士','將']];
@@ -40,7 +44,7 @@ const sd=t=>t<7?0:1,rk=t=>t%7;
 const adj=[];for(let i=0;i<32;i++){const r=i>>2,c=i&3,a=[];if(r>0)a.push(i-4);if(r<7)a.push(i+4);if(c>0)a.push(i-1);if(c<3)a.push(i+1);adj.push(a)}
 function can(a,d){const x=rk(a),y=rk(d);if(x==1)return false;if(x==0&&y==6)return true;if(x==6&&y==0)return false;return x>=y}
 /* ---- search state (AI view: -1 empty, 14 hidden) ---- */
-let b=new Int8Array(32),pool=new Int8Array(14),H=0,AI=1,nodes=0,dl=0,abort=false;
+let lastScore=0,hist={},b=new Int8Array(32),pool=new Int8Array(14),H=0,AI=1,nodes=0,dl=0,abort=false;
 function gen(s,full){const m=[];
  for(let i=0;i<32;i++){const t=b[i];if(t<0||t>=14||sd(t)!=s)continue;const cn=rk(t)==1;
   for(const j of adj[i]){const u=b[j];if(u==-1)m.push(i<<6|j);else if(!cn&&u<14&&sd(u)!=s&&can(t,u))m.push(i<<6|j)}
@@ -52,8 +56,12 @@ function ev(s,m){let x=0,n=0;
  for(let t=0;t<14;t++)if(pool[t])x+=pool[t]*(sd(t)==AI?1:-1)*V[rk(t)];
  let g=0;for(const mv of m){if(mv<0)continue;const f=mv>>6,to=mv&63,u=b[to];if(f!=to&&u>=0&&u<14&&V[rk(u)]>g)g=V[rk(u)]}
  const y=x+(s==AI?g:-g)*.8;
- if(H==0&&x!=0){let md=99;for(let i=0;i<32;i++){const t=b[i];if(t<0||sd(t)!=AI)continue;const r=i>>2,c=i&3;for(let j=0;j<32;j++){const u=b[j];if(u<0||sd(u)==AI)continue;const d=Math.abs(r-(j>>2))+Math.abs(c-(j&3));if(d<md)md=d}}
-  if(md<99)return y+(x>0?-.6:.6)*md}
+ if(H==0&&x!=0){const ah=x>0;let tot=0;
+  for(let i=0;i<32;i++){const t=b[i];if(t<0)continue;if(ah?sd(t)==AI:sd(t)!=AI)continue;
+   let md=99;const r=i>>2,c=i&3;
+   for(let j=0;j<32;j++){const u=b[j];if(u<0||sd(u)==sd(t))continue;if(rk(u)!=1&&!can(u,t))continue;const d=Math.abs(r-(j>>2))+Math.abs(c-(j&3));if(d<md)md=d}
+   if(md<99)tot+=md}
+  return y+(ah?-1:1)*tot}
  return y}
 function qs(s,al,be,q){const st=ev(s,[]),mx=s==AI;if(q==0)return st;
  let best=st;if(mx){if(st>al)al=st}else{if(st<be)be=st}
@@ -80,24 +88,24 @@ function S(s,d,al,be){
   if(mx){if(v>best)best=v;if(best>al)al=best}else{if(v<best)best=v;if(best<be)be=best}
   if(al>=be)break}
  return best}
-function R(d,ord){const m=gen(AI,true);if(m.length==1)return[m[0],{}];
+function R(d,ord){const m=gen(AI,true);if(m.length==1)return[m[0],{}];const RP=ev(AI,[])>0?30:0;
  m.sort((x,y)=>(ord[y]||0)-(ord[x]||0));const sc={};let bv=-1e9,bm=m[0];
  for(const mv of m){let v;const f=mv>>6,t=mv&63;
   if(f==t){let e=0;for(let ty=0;ty<14;ty++){const c=pool[ty];if(!c)continue;pool[ty]--;H--;b[f]=ty;e+=c*S(1-AI,d-1,-1e9,1e9);b[f]=14;H++;pool[ty]++;if(abort)return null}v=e/H}
-  else{const cap=b[t];b[t]=b[f];b[f]=-1;v=S(1-AI,d-1,-1e9,1e9);b[f]=b[t];b[t]=cap}
+  else{const cap=b[t];b[t]=b[f];b[f]=-1;v=S(1-AI,d-1,-1e9,1e9)-RP*(c=>c*c)(hist[b.join()]||0);b[f]=b[t];b[t]=cap}
   if(abort)return null;sc[mv]=v;v+=Math.random()*.05;if(v>bv){bv=v;bm=mv}}
  return[bm,sc]}
-function think(){nodes=0;abort=false;dl=performance.now()+2200;let bm=null,ord={};
- for(let d=1;d<=14;d++){const r=R(d,ord);if(!r)break;bm=r[0];ord=r[1]}
+function think(){lastScore=0;nodes=0;abort=false;dl=performance.now()+2200;let bm=null,ord={};
+ for(let d=1;d<=14;d++){const r=R(d,ord);if(!r)break;bm=r[0];ord=r[1];lastScore=ord[bm]||0}
  return bm}
 /* ---- game ---- */
-let B=[],sh=[],HS=null,turn='h',sel=null,tg=[],last=-1,caps={h:[],a:[]},quiet=0,over=null,busy=false,first='a';
+let B=[],sh=[],HS=null,turn='h',sel=null,tg=[],last=-1,caps={h:[],a:[]},quiet=0,over=null,busy=false,first='a',offer=false,declinedAt=-99;
 const bd=document.getElementById('bd'),cells=[];
 for(let i=0;i<32;i++){const e=document.createElement('div');e.className='c';e.addEventListener('pointerdown',ev=>{ev.preventDefault();tap(i)});bd.appendChild(e);cells.push(e)}
 function view(){pool.fill(0);H=0;for(let i=0;i<32;i++){if(B[i]<0)b[i]=-1;else if(sh[i])b[i]=B[i];else{b[i]=14;pool[B[i]]++;H++}}}
 function newGame(){const a=[];for(let s=0;s<2;s++)for(let r=0;r<7;r++)for(let k=0;k<CNT[r];k++)a.push(s*7+r);
  for(let i=31;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}
- B=a;sh=Array(32).fill(false);HS=null;sel=null;tg=[];last=-1;caps={h:[],a:[]};quiet=0;over=null;busy=false;
+ hist={};offer=false;wantOffer=false;declinedAt=-99;B=a;sh=Array(32).fill(false);HS=null;sel=null;tg=[];last=-1;caps={h:[],a:[]};quiet=0;over=null;busy=false;
  first=first=='h'?'a':'h';turn=first;render();if(turn=='a')aiGo()}
 function anim(f,t,gh,rf,rt){const p=cells[t].querySelector('.p');if(!p)return;
  if(f==t){p.classList.add('flip');return}
@@ -109,10 +117,10 @@ function apply(f,t,who){
  if(f==t){sh[f]=true;if(HS==null)HS=who=='h'?sd(B[f]):1-sd(B[f]);quiet=0}
  else{const cap=B[t];if(cap>=0){caps[who].push(cap);quiet=0}else quiet++;B[t]=B[f];sh[t]=true;B[f]=-1;sh[f]=false}
  last=t;sel=null;tg=[];
- const nx=who=='h'?'a':'h';view();
+ const nx=who=='h'?'a':'h';view();{const k=b.join();hist[k]=(hist[k]||0)+1}
  if(!gen(nx=='h'?HS:1-HS,true).length)over=who;else if(quiet>=60)over='d';
  turn=nx;render();anim(f,t,gh,rf,rt);if(!over&&turn=='a')aiGo()}
-function tap(i){if(over||turn!='h'||busy)return;
+function tap(i){if(over||turn!='h'||busy||offer)return;
  if(sel!=null&&tg.includes(i)){apply(sel,i,'h');return}
  const t=B[i];
  if(t>=0&&!sh[i]){apply(i,i,'h');return}
@@ -121,22 +129,34 @@ function tap(i){if(over||turn!='h'||busy)return;
 function aiGo(){busy=true;document.getElementById('st').textContent='AI 思考中…';setTimeout(()=>{
  let f,t;
  if(HS==null){const h=[];for(let i=0;i<32;i++)if(!sh[i]&&B[i]>=0)h.push(i);f=t=h[Math.random()*h.length|0]}
- else{AI=1-HS;view();const m=think();f=m>>6;t=m&63}
- busy=false;apply(f,t,'a')},450)}
+ else{AI=1-HS;view();const m=think();f=m>>6;t=m&63;
+  if(H==0&&(lastScore<-180||lastScore<-9e5)){busy=false;over='r';render();return}
+  if(H==0&&((quiet>=24&&lastScore<=15)||(quiet>=44&&lastScore<=80))&&(quiet<declinedAt||quiet>=declinedAt+20))wantOffer=true}
+ busy=false;apply(f,t,'a');if(wantOffer&&!over){offer=true;document.getElementById('st').textContent='AI 提出和局，是否接受？';document.getElementById('of').style.display='flex'}},450)}
+let wantOffer=false;
+function offerDraw(){if(over||turn!='h'||busy||offer||HS==null)return;
+ AI=1-HS;view();const x=ev(AI,[]);
+ if(quiet>=16&&x<=25){over='g';render()}else document.getElementById('st').textContent='AI 拒絕和局'}
+function resign(){if(over||turn!='h'||busy||offer||HS==null)return;if(confirm('確定投降？')){over='u';render()}}
+function answer(ok){if(!offer)return;offer=false;wantOffer=false;if(ok)over='g';else declinedAt=quiet;render()}
 function render(){
  cells.forEach((el,i)=>{const t=B[i];let h='';
   if(t>=0){if(sh[i]){const s=sd(t);h=`<div class="p ${s?'k':'r'}${sel==i?' sel':''}">${NAME[s][rk(t)]}</div>`}else h='<div class="p h"></div>'}
   if(tg.includes(i))h+=`<div class="tg${t>=0?' cp':''}"></div>`;
   el.className='c'+(i==last?' last':'');el.innerHTML=h});
  const cn=HS==null?'':HS==0?'紅':'黑';
- let s;if(over)s=over=='d'?'和局':over=='h'?'🎉 你贏了！':'AI 獲勝';
+ let s;if(over)s={d:'🤝 和局',h:'🎉 你贏了！',a:'AI 獲勝',r:'🎉 AI 認輸，你贏了！',u:'你投降了，AI 獲勝',g:'🤝 雙方同意和局'}[over];
+ else if(offer)s='AI 提出和局，是否接受？';
  else if(busy)s='AI 思考中…';else s=HS==null?'你先翻一顆':`你執${cn} · 輪到你`;
  document.getElementById('st').textContent=s;
+ document.getElementById('of').style.display=offer&&!over?'flex':'none';
+ document.getElementById('act').style.opacity=over||HS==null?.4:1;
  const nm=a=>a.map(t=>`<span style="color:${sd(t)?'#ccc':'#ff7b6e'}">${NAME[sd(t)][rk(t)]}</span>`).join(' ')||'—';
  document.getElementById('cp').innerHTML=`你吃掉：${nm(caps.h)}<br>AI吃掉：${nm(caps.a)}`}
-function fit(){const h=innerHeight,w=innerWidth;const W=Math.min(w-16,(h-150)/2);document.documentElement.style.setProperty('--w',Math.max(160,W)+'px')}
+function fit(){const h=innerHeight,w=innerWidth;const W=Math.min(w-16,(h-205)/2);document.documentElement.style.setProperty('--w',Math.max(160,W)+'px')}
 addEventListener('resize',fit);fit();
 document.getElementById('nb').addEventListener('click',newGame);
+[['bdr',offerDraw],['bsr',resign],['oy',()=>answer(true)],['on',()=>answer(false)]].forEach(([i,f])=>document.getElementById(i).addEventListener('pointerdown',e=>{e.preventDefault();f()}));
 ['gesturestart','gesturechange','gestureend'].forEach(n=>document.addEventListener(n,e=>e.preventDefault()));
 document.addEventListener('touchmove',e=>{if(e.touches.length>1||e.scale&&e.scale!==1)e.preventDefault();else e.preventDefault()},{passive:false});
 let lt=0;document.addEventListener('touchend',e=>{const n=Date.now();if(n-lt<350)e.preventDefault();lt=n},{passive:false});
